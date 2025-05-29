@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>12306车票查询助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#00B42A',
+                        warning: '#FF7D00',
+                        danger: '#F53F3F',
+                        dark: '#1D2129',
+                        light: '#F2F3F5'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .animate-pulse-slow {
+                animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        <!-- 页面标题 -->
+        <header class="text-center mb-10">
+            <h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold text-dark mb-2">
+                <i class="fa fa-train text-primary mr-2"></i>12306车票查询助手
+            </h1>
+            <p class="text-gray-500">通过AI助手快速查询火车票信息</p>
+        </header>
+
+        <!-- 主容器 -->
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <!-- 聊天区域 -->
+            <div id="chat-container" class="h-[500px] overflow-y-auto p-4 scrollbar-hide space-y-4">
+                <!-- 欢迎消息 -->
+                <div class="flex items-start mb-4">
+                    <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary mr-3 flex-shrink-0">
+                        <i class="fa fa-robot text-lg"></i>
+                    </div>
+                    <div class="bg-light rounded-xl p-4 max-w-[80%] shadow-sm">
+                        <p class="text-dark">你好！我是12306车票查询助手，我可以帮你查询火车票信息。请告诉我你的出发地、目的地和出行日期，例如："查询明天从北京到上海的高铁票"</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 输入区域 -->
+            <div class="border-t border-gray-100 p-4 flex items-center gap-3">
+                <input 
+                    type="text" 
+                    id="user-input" 
+                    class="flex-1 px-4 py-3 rounded-full border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" 
+                    placeholder="请输入查询内容..."
+                >
+                <button 
+                    id="send-btn" 
+                    class="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-full flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                >
+                    <span>发送</span>
+                    <i class="fa fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 提示区域 -->
+        <div class="mt-6 bg-blue-50 border-l-4 border-primary p-4 rounded-r-lg">
+            <p class="text-dark font-medium">查询提示：</p>
+            <ul class="mt-2 space-y-1 text-gray-600 text-sm">
+                <li>• 请使用完整的城市名或车站名，例如：北京、上海虹桥</li>
+                <li>• 日期可以使用中文描述（明天、后天）或YYYY-MM-DD格式</li>
+                <li>• 可以指定车次类型：高铁、动车、普通列车</li>
+                <li>• 示例：查询2025-06-01从北京到上海的高铁票</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const chatContainer = document.getElementById('chat-container');
+            const userInput = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            let eventSource = null;
+
+            // 添加消息到聊天窗口
+            function addMessage(content, isUser = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'flex items-start mb-4';
+                
+                if (isUser) {
+                    messageDiv.className += ' justify-end';
+                    messageDiv.innerHTML = `
+                        <div class="bg-primary/10 text-dark rounded-xl p-4 max-w-[80%] shadow-sm">
+                            <p>${content}</p>
+                        </div>
+                        <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 ml-3 flex-shrink-0">
+                            <i class="fa fa-user text-lg"></i>
+                        </div>
+                    `;
+                } else {
+                    messageDiv.innerHTML = `
+                        <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary mr-3 flex-shrink-0">
+                            <i class="fa fa-robot text-lg"></i>
+                        </div>
+                        <div class="bg-light rounded-xl p-4 max-w-[80%] shadow-sm">
+                            <p>${content}</p>
+                        </div>
+                    `;
+                }
+                
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+
+            // 发送用户消息并获取回复
+            function sendMessage() {
+                const message = userInput.value.trim();
+                if (!message) return;
+                
+                // 添加用户消息到聊天窗口
+                addMessage(message, true);
+                userInput.value = '';
+                
+                // 添加加载状态
+                const loadingId = 'loading-' + Date.now();
+                addMessage(`<div id="${loadingId}" class="animate-pulse-slow"><i class="fa fa-circle-o-notch fa-spin mr-2"></i>正在查询中...</div>`);
+                
+                // 模拟SSE连接
+                if (eventSource) {
+                    eventSource.close();
+                }
+                
+                // 这里使用setTimeout模拟SSE事件流
+                setTimeout(() => {
+                    // 移除加载状态
+                    const loadingElement = document.getElementById(loadingId);
+                    if (loadingElement && loadingElement.parentElement) {
+                        loadingElement.parentElement.innerHTML = generateTicketResponse(message);
+                    }
+                }, 1500);
+            }
+
+            // 生成车票查询结果
+            function generateTicketResponse(query) {
+                // 简单解析用户查询
+                const dateMatch = query.match(/\d{4}-\d{2}-\d{2}/);
+                const date = dateMatch ? dateMatch[0] : '2025-06-01';
+                const fromMatch = query.match(/从(.*?)到/);
+                const from = fromMatch ? fromMatch[1] : '北京';
+                const toMatch = query.match(/到(.*?)(的|票)/);
+                const to = toMatch ? toMatch[1] : '上海';
+                const typeMatch = query.match(/(高铁|动车|普通列车)/);
+                const type = typeMatch ? typeMatch[1] : '高铁';
+                
+                // 生成模拟车票数据
+                const tickets = [];
+                const trainTypes = {
+                    '高铁': ['G1', 'G2', 'G3', 'G101', 'G102'],
+                    '动车': ['D31', 'D32', 'D33', 'D701', 'D702'],
+                    '普通列车': ['Z1', 'Z2', 'T101', 'K101', 'K102']
+                };
+                
+                for (let i = 0; i < 5; i++) {
+                    const trainNo = trainTypes[type][i];
+                    const departureTime = `0${8 + Math.floor(i/2)}:${i%2 === 0 ? '00' : '30'}`;
+                    const arrivalTime = `0${10 + i}:${i%2 === 0 ? '00' : '30'}`;
+                    const duration = `${2 + Math.floor(i/2)}小时${i%2 === 0 ? '00' : '30'}分钟`;
+                    const price = Math.floor(Math.random() * 100) + 200;
+                    
+                    tickets.push(`
+                        <div class="border border-gray-200 rounded-lg p-4 mb-3 hover:shadow-md transition-shadow">
+                            <div class="flex justify-between items-center mb-2">
+                                <div class="font-bold text-primary">${trainNo}</div>
+                                <div class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">${type}</div>
+                            </div>
+                            <div class="flex justify-between items-center mb-2">
+                                <div>
+                                    <div class="text-xl font-bold">${departureTime}</div>
+                                    <div class="text-gray-500">${from}</div>
+                                </div>
+                                <div class="flex flex-col items-center">
+                                    <div class="w-24 h-px bg-gray-200 my-1 relative">
+                                        <div class="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-primary rounded-full"></div>
+                                    </div>
+                                    <div class="text-xs text-gray-500">${duration}</div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xl font-bold">${arrivalTime}</div>
+                                    <div class="text-gray-500">${to}</div>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <div class="text-red-500 font-bold">¥${price}</div>
+                                <button class="px-3 py-1 bg-primary text-white rounded-md text-sm hover:bg-primary/90 transition-colors">预订</button>
+                            </div>
+                        </div>
+                    `);
+                }
+                
+                return `
+                    <div>
+                        <p class="mb-3">以下是${date}从${from}到${to}的${type}车票信息：</p>
+                        ${tickets.join('')}
+                        <p class="mt-4 text-gray-500 text-sm">注：以上信息为模拟数据，仅供演示使用</p>
+                    </div>
+                `;
+            }
+
+            // 事件监听
+            sendBtn.addEventListener('click', sendMessage);
+            
+            userInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // 自动聚焦输入框
+            userInput.focus();
+        });
+    </script>
+</body>
+</html>
+    
